@@ -12,4 +12,13 @@ allow zygote dex2oat unix_stream_socket *
 
 type xposed_data file_type
 typeattribute xposed_data mlstrustedobject
-allow * xposed_data {file dir} *
+# Every domain needs this type: module prefs are shared between the daemon and
+# hooked processes, and staged native libraries have to be mappable executable
+# from system_server and from every app domain (see FileSystem.stageNativeLibraries).
+#
+# The domain set therefore stays broad, but the permission set does not: `*` also
+# handed out relabelfrom/relabelto/mounton/execmod, which let any app move files
+# out of this type, pull other files into it, or mount over them. Spell out what
+# is actually used instead.
+allow * xposed_data file { getattr setattr create open read write append unlink rename link lock ioctl execute map }
+allow * xposed_data dir { getattr setattr create open read write search add_name remove_name rename rmdir lock ioctl }

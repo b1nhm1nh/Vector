@@ -107,11 +107,20 @@ size_t Logcat::FastWrite(const AndroidLogEntry& entry, int fd) {
                          entry.tv_nsec / 1000000, entry.uid, entry.pid, entry.tid,
                          kLogChar[entry.priority], (int)entry.tagLen, entry.tag);
 
+    // snprintf returns the length it *would* have written. The tag comes from
+    // whoever emitted the log line, so a tag longer than meta_buf made m_len
+    // exceed the buffer and writev then copied this (root) process's stack into
+    // the log file, which can be exported world-readable. Clamp to what was
+    // actually written.
+    if (m_len < 0) return 0;
+    size_t meta_len = static_cast<size_t>(m_len);
+    if (meta_len >= sizeof(meta_buf)) meta_len = sizeof(meta_buf) - 1;
+
     // Ensure line has a trailing newline
     bool add_nl = (entry.messageLen == 0 || entry.message[entry.messageLen - 1] != '\n');
     struct iovec iov[5] = {{(void*)"[ ", 2},
                            {time_buf, t_len},
-                           {meta_buf, (size_t)m_len},
+                           {meta_buf, meta_len},
                            {(void*)entry.message, entry.messageLen},
                            {(void*)"\n", add_nl ? 1U : 0U}};
 

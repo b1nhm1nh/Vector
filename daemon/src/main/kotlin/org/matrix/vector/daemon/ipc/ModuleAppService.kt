@@ -8,6 +8,8 @@ import android.os.IBinder
 import android.os.ParcelFileDescriptor
 import android.os.RemoteException
 import android.os.SystemClock
+import android.system.Os
+import android.system.OsConstants
 import android.util.Log
 import io.github.libxposed.service.HookedProcess
 import io.github.libxposed.service.IHotReloadCallback
@@ -765,8 +767,20 @@ class ModuleAppService(private val loadedModule: LoadedModule) : IXposedService.
                       loadedModule.packageName, "files", userId, Binder.getCallingUid())
                   .resolve(path)
                   .toFile()
-          ParcelFileDescriptor.open(
-              file, ParcelFileDescriptor.MODE_CREATE or ParcelFileDescriptor.MODE_READ_WRITE)
+          // O_NOFOLLOW: we open this as root inside a directory owned by the module's own uid, so
+          // the module could otherwise replace an entry with a symlink to a root-owned file and be
+          // handed read-write access to it. ParcelFileDescriptor.open cannot express the flag, so
+          // go through Os.open and wrap the result.
+          val fd =
+              Os.open(
+                  file.path,
+                  OsConstants.O_RDWR or OsConstants.O_CREAT or OsConstants.O_NOFOLLOW,
+                  0o600)
+          try {
+            ParcelFileDescriptor.dup(fd)
+          } finally {
+            runCatching { Os.close(fd) }
+          }
         }
         .getOrElse { throw RemoteException(it.message) }
   }

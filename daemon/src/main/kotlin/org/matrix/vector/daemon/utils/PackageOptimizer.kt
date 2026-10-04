@@ -72,14 +72,19 @@ object PackageOptimizer {
   /** Android 14+: dexopt and profiles are owned by the ART Service, reachable through its shell. */
   private object ShellBackend : Backend {
     override fun clearProfiles(packageName: String): Boolean =
-        exec("cmd package art clear-app-profiles $packageName").first == 0
+        exec("cmd", "package", "art", "clear-app-profiles", packageName).first == 0
 
     override fun compile(packageName: String): Boolean {
-      val (exitCode, output) = exec("cmd package compile -m speed-profile -f $packageName")
+      val (exitCode, output) =
+          exec("cmd", "package", "compile", "-m", "speed-profile", "-f", packageName)
       return exitCode == 0 && output.contains("Success")
     }
 
-    private fun exec(command: String): Pair<Int, String> {
+    /**
+     * Pass the argv array rather than one string: the single-string overload splits on whitespace,
+     * so a package name containing a space would turn into extra arguments to `cmd package`.
+     */
+    private fun exec(vararg command: String): Pair<Int, String> {
       val process = Runtime.getRuntime().exec(command)
       val output = BufferedReader(InputStreamReader(process.inputStream)).use { it.readText() }
       return process.waitFor() to output

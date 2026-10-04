@@ -80,6 +80,16 @@ object CliSocketServer {
 
   private fun handleClient(socket: LocalSocket) {
     try {
+      // Check who actually connected before reading anything they sent. The token below is fixed
+      // at build time, so it is identical on every install of a release and is not a secret; the
+      // socket's 0700 root-only directory was doing all the real work. Ask the kernel instead.
+      val peer = socket.peerCredentials
+      if (peer.uid != 0) {
+        Log.w(TAG, "Rejected CLI connection from uid ${peer.uid}, pid ${peer.pid}")
+        socket.close()
+        return
+      }
+
       val input = DataInputStream(socket.inputStream)
       val output = DataOutputStream(socket.outputStream)
 
