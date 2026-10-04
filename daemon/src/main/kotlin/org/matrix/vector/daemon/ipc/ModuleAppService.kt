@@ -770,12 +770,13 @@ class ModuleAppService(private val loadedModule: LoadedModule) : IXposedService.
           // O_NOFOLLOW: we open this as root inside a directory owned by the module's own uid, so
           // the module could otherwise replace an entry with a symlink to a root-owned file and be
           // handed read-write access to it. ParcelFileDescriptor.open cannot express the flag, so
-          // go through Os.open and wrap the result.
+          // go through Os.open and wrap the result. The mode matches what
+          // ParcelFileDescriptor.open(MODE_CREATE) used, so only the symlink handling changes.
           val fd =
               Os.open(
                   file.path,
                   OsConstants.O_RDWR or OsConstants.O_CREAT or OsConstants.O_NOFOLLOW,
-                  0o600)
+                  OsConstants.S_IRWXU or OsConstants.S_IRWXG)
           try {
             ParcelFileDescriptor.dup(fd)
           } finally {
