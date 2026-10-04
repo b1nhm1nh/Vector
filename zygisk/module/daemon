@@ -4,10 +4,13 @@ dir="${0%/*}"
 tmpDaemonApk="/data/local/tmp/daemon.apk"
 debug="@DEBUG@"
 
-# Safely check for debug APK and set classpath
-if [ -r "$tmpDaemonApk" ]; then
+# Set the classpath. The /data/local/tmp override is a development
+# convenience and is only honoured in debug builds: that directory is
+# writable by the adb shell user, so in a release build anyone with ADB
+# access could drop an APK there and have the root daemon execute it on
+# the next boot.
+if [ "$debug" = "true" ] && [ -r "$tmpDaemonApk" ]; then
   java_options="-Djava.class.path=$tmpDaemonApk"
-  debug="true"
 else
   java_options="-Djava.class.path=$dir/daemon.apk"
 fi

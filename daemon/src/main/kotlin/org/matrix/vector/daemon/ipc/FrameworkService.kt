@@ -307,6 +307,9 @@ object FrameworkService : IFrameworkService.Stub() {
     // postStartManager compares the caller against the pid the daemon launched the manager into,
     // so this reports a decision already taken rather than making one. It is its own call because it
     // answers a different question from the one that opens the APK, not because it costs anything.
+    //
+    // isManager is signature-checked and does not accept the shell uid on its own, so the parasitic
+    // manager only gets here through the pid recorded by tryRegisterManagerProcess.
     if (!ManagerService.postStartManager(pid) && !ConfigCache.isManager(uid)) return null
     return ManagerService.obtainManagerBinder(info.heartBeat, pid, uid)
   }

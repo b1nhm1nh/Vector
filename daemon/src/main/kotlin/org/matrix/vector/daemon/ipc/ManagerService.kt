@@ -117,16 +117,26 @@ object ManagerService : IManagerService.Stub() {
 
   @Synchronized
   fun tryRegisterManagerProcess(pid: Int, uid: Int, processName: String): Boolean {
-    if (ConfigCache.isManager(uid) && processName == BuildConfig.DEFAULT_MANAGER_PACKAGE_NAME) {
-      if (pendingManager) {
-        Log.v(TAG, "Parasitic manager registered.")
-        pendingManager = false
-      } else {
-        Log.v(TAG, "Starting user-installed manager process.")
-      }
+    if (processName != BuildConfig.DEFAULT_MANAGER_PACKAGE_NAME) return false
+
+    // The signature-verified, user-installed manager.
+    if (ConfigCache.isManager(uid)) {
+      Log.v(TAG, "Starting user-installed manager process.")
       managerPid = pid
       return true
     }
+
+    // The parasitic manager runs in the shell uid, which proves nothing by itself: processName
+    // arrives from the caller and any adb shell can claim it. Accept it only in the window the
+    // daemon itself opened by redirecting a manager launch (preStartManager), and close that
+    // window on the first claim so a racing process cannot reuse it.
+    if (pendingManager && ConfigCache.isInjectedManagerUid(uid)) {
+      Log.v(TAG, "Parasitic manager registered.")
+      pendingManager = false
+      managerPid = pid
+      return true
+    }
+
     return false
   }
 
@@ -182,19 +192,32 @@ object ManagerService : IManagerService.Stub() {
     if (result < 0) Log.e(TAG, "Failed to open manager: $result")
   }
 
-  /** Fixes permissions for the WebView cache. */
+  /**
+   * Fixes permissions for the WebView cache.
+   *
+   * This walks a directory owned by [targetUid] (the shell user) while running as root, so it must
+   * never follow a symlink: a process running as that uid can replace any entry with a link to a
+   * root-owned file and have us hand that file over. Use `lstat`/`lchown` and skip links entirely.
+   */
   private fun fixWebViewPermissions(file: File, targetUid: Int) {
-    if (!file.exists()) return
+    val stat =
+        runCatching { android.system.Os.lstat(file.absolutePath) }.getOrNull()
+            ?: return // missing, or we cannot stat it
+
+    if (android.system.OsConstants.S_ISLNK(stat.st_mode)) {
+      Log.w(TAG, "Skipping symlink in WebView cache: ${file.path}")
+      return
+    }
 
     // Set the SELinux label that allows apps to read/write shared xposed data
     SELinux.setFileContext(file.absolutePath, "u:object_r:xposed_file:s0")
 
-    // Change ownership to the target UID (e.g., 2000)
-    runCatching { android.system.Os.chown(file.absolutePath, targetUid, targetUid) }
+    // Change ownership to the target UID (e.g., 2000), without following links
+    runCatching { android.system.Os.lchown(file.absolutePath, targetUid, targetUid) }
         .onFailure { Log.e(TAG, "Failed to chown ${file.path}", it) }
 
     // Recurse into directories
-    if (file.isDirectory) {
+    if (android.system.OsConstants.S_ISDIR(stat.st_mode)) {
       file.listFiles()?.forEach { fixWebViewPermissions(it, targetUid) }
     }
   }
@@ -218,14 +241,15 @@ object ManagerService : IManagerService.Stub() {
 
   fun obtainManagerBinder(heartbeat: IBinder, pid: Int, uid: Int): IBinder {
     ManagerGuard(heartbeat, pid, uid)
-    if (ConfigCache.isManager(uid)) {
+    // Only the parasitic manager needs its host's WebView cache relabelled.
+    if (ConfigCache.isInjectedManagerUid(uid) && pid == managerPid) {
       ensureWebViewPermission()
     }
     return this
   }
 
   fun isRunningManager(pid: Int, uid: Int): Boolean =
-      pid == managerPid && ConfigCache.isManager(uid)
+      pid == managerPid && (ConfigCache.isManager(uid) || ConfigCache.isInjectedManagerUid(uid))
 
   override fun getProtocolVersion() = IManagerService.PROTOCOL_VERSION
 

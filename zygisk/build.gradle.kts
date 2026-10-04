@@ -104,7 +104,7 @@ androidComponents {
                 )
                 into(tempModuleDir)
                 from("${rootProject.projectDir}/README.md")
-                from("$projectDir/module") { exclude("module.prop", "action.sh", "daemon") }
+                from("$projectDir/module") { exclude("module.prop", "action.sh", "daemon", "cli") }
                 from("$projectDir/module") {
                     include("module.prop")
                     expand(
@@ -123,7 +123,7 @@ androidComponents {
                     filter<ReplaceTokens>("tokens" to tokens)
                 }
                 from("$projectDir/module") {
-                    include("daemon")
+                    include("daemon", "cli")
                     val tokens =
                         mapOf("DEBUG" to if (variantLowered == "debug") "true" else "false")
                     filter<ReplaceTokens>("tokens" to tokens)

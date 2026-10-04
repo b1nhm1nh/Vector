@@ -133,10 +133,24 @@ object ConfigCache {
         .onFailure { Log.e(TAG, "Failed to create misc directory", it) }
   }
 
+  /**
+   * True only for the installed manager, whose APK signature was checked against the one compiled
+   * in by [updateManager].
+   *
+   * This deliberately does not accept [BuildConfig.MANAGER_INJECTED_UID]. That uid is the shell
+   * user, which is shared with anyone holding ADB, and it carries no proof of identity: treating it
+   * as the manager let an adb shell obtain the manager binder and from there flash a framework zip
+   * as root or inject code into any process. The parasitic manager is recognised by
+   * [isInjectedManagerUid] instead, which is only consulted while the daemon itself has a manager
+   * launch pending.
+   */
   fun isManager(uid: Int): Boolean {
     ensureCacheReady()
-    return uid == state.managerUid || uid == BuildConfig.MANAGER_INJECTED_UID
+    return state.managerUid != -1 && uid == state.managerUid
   }
+
+  /** The uid the parasitic manager is hosted in. Never sufficient on its own; see [isManager]. */
+  fun isInjectedManagerUid(uid: Int): Boolean = uid == BuildConfig.MANAGER_INJECTED_UID
 
   fun requestCacheUpdate() {
     cacheUpdateChannel.trySend(Unit)
